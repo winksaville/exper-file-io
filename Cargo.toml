@@ -1,6 +1,7 @@
 [workspace]
 members = [
   "sync-io",
+  "thread-channel-sync-io",
   "xtask",
 ]
 
