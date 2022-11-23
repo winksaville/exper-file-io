@@ -4,30 +4,24 @@ Based on [Rust By Example open](https://doc.rust-lang.org/rust-by-example/std_mi
 
 # Run
 
-Currently to run successfully you must create hello.txt, if you don't:
+If hello.txt exists deletes it and then creates it and reads it using read_to_string.
+Then reads it again into a `[u8]` buffer and prints the data as its reading in hex.
+Finally, prints the total read and the length of the last buffer.
 ```
-wink@3900x 22-11-23T17:31:28.340Z:~/prgs/rust/myrepos/exper-file-io/sync-io (main)
+wink@3900x 22-11-23T20:58:35.928Z:~/prgs/rust/myrepos/exper-file-io/sync-io (main)
 $ cargo run
    Compiling sync-io v0.1.0 (/home/wink/prgs/rust/myrepos/exper-file-io/sync-io)
-    Finished dev [unoptimized + debuginfo] target(s) in 0.15s
+    Finished dev [unoptimized + debuginfo] target(s) in 0.16s
      Running `/home/wink/prgs/rust/myrepos/exper-file-io/target/debug/sync-io`
-thread 'main' panicked at 'couldn't open hello.txt: No such file or directory (os error 2)', sync-io/src/main.rs:12:21
-note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
-```
-
-And if you do it succeeds:
-```
-wink@3900x 22-11-23T17:32:55.804Z:~/prgs/rust/myrepos/exper-file-io/sync-io (main)
-$ echo "Hello World!" > hello.txt
-wink@3900x 22-11-23T17:32:59.324Z:~/prgs/rust/myrepos/exper-file-io/sync-io (main)
-$ cargo run
-    Finished dev [unoptimized + debuginfo] target(s) in 0.00s
-     Running `/home/wink/prgs/rust/myrepos/exper-file-io/target/debug/sync-io`
+Creating hello.txt
 hello.txt contains:
-Hello World!
+Hello World
+open_existing_and_read_buf_at_a_time: file_name=hello.txt buf.len=5
+read 5 buf=[48, 65, 6C, 6C, 6F]
+read 5 buf=[20, 57, 6F, 72, 6C]
+read 1 buf=[64]
+len_read=11 len_last_buf=1
 ```
-
-
 
 ## License
 
