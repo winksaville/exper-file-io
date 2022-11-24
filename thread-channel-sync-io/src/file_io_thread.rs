@@ -3,6 +3,26 @@ use std::fs::{metadata, remove_file, File};
 use std::io::prelude::*;
 use std::path::Path;
 use std::result::Result;
+use std::sync::mpsc::{Sender, Receiver, channel};
+
+#[derive(Debug)]
+pub enum Messages {
+    Open {
+        // Name of file open
+        file_name: String,
+    },
+    Start,
+    Read,
+    Data {
+        buf: Vec<u8>
+    },
+    Empty {
+        buf: Vec<u8>
+    },
+    Done {
+        result: Result<(), Box::<dyn Error>>,
+    }
+}
 
 // Panics if file doesn't exist
 fn open_existing_and_read(file_name: &str) {
@@ -66,30 +86,117 @@ fn file_exists(file_name: &str) -> bool {
     }
 }
 
-pub fn file_io_thread() -> Result<(), Box<dyn Error>> {
-    log::info!("file_io_thread:+");
+pub fn read_file_thread(partner_rx: Receiver<Messages>) -> Result<Sender<Messages>, Box<dyn Error>> {
 
-    // Create heljlo.txt if it doesn't exist
-    let hello_txt = "hello.txt";
-    if file_exists(hello_txt) {
-        log::info!("Delete {hello_txt}");
-        remove_file(hello_txt)?;
+    todo!("Figure out if this will spawn a thread or it's in a spawned thread and shouldn't return until done");
+
+    let (tx, rx) = channel::<Messages>();
+
+    #[derive(Debug)]
+    enum States {
+        Open, Opened, Reading, WaitingForBuffer
     }
-    if !file_exists(hello_txt) {
-        log::info!("Creating {hello_txt}");
-        let mut file = File::create(hello_txt)?;
-        file.write_all("Hello World".as_bytes())?;
-        drop(file);
+    let mut state = States::Open;
+    let mut file: Option<File> = None;
+    let mut buffers: Vec<Vec<u8>>;
+    let len_read: usize = 0;
+    let mut active_file_name: Option<String> = None;
+    loop {
+        let msg = match partner_rx.recv() {
+            Ok(msg) => msg,
+            Err(_) => {
+                println!("Connection broken, stopping");
+                break;
+            }
+        };
+        match state {
+            States::Open => {
+                match msg {
+                    Messages::Open { file_name } => {
+                        file = match File::open(&file_name) {
+                            Ok(file) => {
+                                state = States::Opened;
+                                active_file_name = Some(file_name.clone());
+                                Some(file)
+                            }
+                            Err(why) => {
+                                tx.send(Messages::Done { result: Err(Box::new(why))});
+                                None
+                            }
+                        };
+                    }
+                    Messages::Start => panic!("Messages::Start not supported in {state:?}"),
+                    Messages::Read => panic!("Messages::Read not supported in {state:?}"),
+                    Messages::Data { buf } => panic!("Messages::Data not supported in {state:?}"),
+                    Messages::Empty { buf } => buffers.push(buf),
+                    Messages::Done { result: _ } => panic!("Messages:Done not supported in {state:?}"),
+                }
+            }
+            States::Opened => {
+                match msg {
+                    Messages::Open { file_name } => panic!("Messages::Open not supported in {state:?}"),
+                    Messages::Start => {
+                        // Send message to ourself 
+                        tx.send(Messages::Read);   
+                        state = States::Reading;
+                    }
+                    Messages::Read => panic!("Messages::Read not supported in {state:?}"),
+                    Messages::Data { buf } => panic!("Messages::Data not supported in {state:?}"),
+                    Messages::Empty { buf } => buffers.push(buf),
+                    Messages::Done { result: _ } => panic!("Messages:Done not supported in {state:?}"),
+                }
+            }
+            States::Reading => {
+                match msg {
+                    Messages::Open { file_name } => panic!("Messages::Open not supported in {state:?}"),
+                    Messages::Start => panic!("Messages::Read not supported in {state:?}"),
+                    Messages::Read => {
+                        if let Some(buf) = buffers.pop() {
+                            if let Some(f) = file {
+                                match f.read(&mut buf) {
+                                    Ok(count) => {
+                                        len_read += count;
+                                        log::info!("read {count} buf={:X?}", &buf[..count]);
+
+                                        if count < buf.len() {
+                                            drop(f); // Close the file
+                                            file = None; // No file is open
+                                            state = States::Open; // Back to Open
+                                            active_file_name = None;
+                                        }
+                                    }
+                                    Err(why) => {
+                                        // Handles errors!
+                                        panic!("Couldn't read {active_file_name:?}: {why}");
+                                    }
+                                }
+                            }
+                        } else {
+                            state = States::WaitingForBuffer;
+                        }
+                    }
+                    Messages::Data { buf } => panic!("Messages::Data not supported in {state:?}"),
+                    Messages::Empty { buf } => buffers.push(buf),
+                    Messages::Done { result: _ } => panic!("Messages:Done not supported in {state:?}"),
+                }
+            }
+            States::WaitingForBuffer => {
+                match msg {
+                    Messages::Open { file_name } => panic!("Messages::Open not supported in {state:?}"),
+                    Messages::Start => panic!("Messages::Read not supported in {state:?}"),
+                    Messages::Read => panic!("Messages::Read not supported in {state:?}"),
+                    Messages::Data { buf } => panic!("Messages::Data not supported in {state:?}"),
+                    Messages::Empty { buf } => {
+                        buffers.push(buf);
+                        tx.send(Messages::Read);   
+                        state = States::Reading;
+                    }
+                    Messages::Done { result: _ } => panic!("Messages:Done not supported in {state:?}"),
+                }
+            }
+        }
     }
-
-    open_existing_and_read(hello_txt);
-
-    const BUF_LEN: usize = 5;
-    let mut buf = [0u8; BUF_LEN];
-
-    let (len_read, len_last_buf) = open_existing_and_read_buf_at_a_time(hello_txt, &mut buf)?;
-    log::info!("len_read={len_read} len_last_buf={len_last_buf}");
-
-    log::info!("file_io_thread:-");
-    Ok(())
+    
+    log::info!("read_file_thread:-");
+    Ok(tx)
 }
